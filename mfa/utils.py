@@ -1,40 +1,48 @@
-import secrets
-import hashlib
-import hmac
-from datetime import timedelta
-from django.utils import timezone
+# Archivo: mfa/utils.py
+
+import random
 from django.core.mail import send_mail
-from django.core.cache import cache
-from django.conf import settings
 from django.template.loader import render_to_string
-from .model. import LoginOTP
+from django.conf import settings
+from .models import TwoFactorAuth
+from users.models import User
 
-# Parámetors ajustables
-OTP_TTL_MINUTES = 10            # minutos de vigencia del código
-OTP_LENGTH = 6                  # longitud del codigo
-RESEND_COOLDOWN_SECONDS = 60    # espera mínima para reenviar
-MAX_PER_HOUR_PER_USER = 5       # límite por hora por usuario (anti-spam)
-
-def _hash(code: srt) -> str:
-    """ Hashea el código con SHA-256 (hex)"""
-    return hashlib.sha256(code.encode("utf-8")).hexdigest()
-
-def _throttle_can_generate(user_id: int) ->bool:
+def send_2fa_code(user: User):
     """
-    Control básico por cache: máximo N OTP hora por usuario.
-    Cambia el backend de cache en settings si quieres usar Redis en prod.
+    Genera un código de 6 dígitos, lo guarda en la base de datos
+    y lo envía al correo electrónico del usuario.
     """
+    # Genera un código aleatorio de 6 dígitos
+    code = str(random.randint(100000, 999999))
 
-    key = f"otp_count_u{user_id}"
-    count = cache.get(key, 0)
-    if count >= MAX_PER_HOUR_PER_USER:
-        return False
-    cache.set(key, count +1, timeout=60 * 60)   # Ventana de 1 hora
-    return True
+    # Guarda o actualiza el código en la base de datos para el usuario
+    # El objeto se crea si no existe, o se actualiza si ya existe.
+    TwoFactorAuth.objects.update_or_create(
+        user=user,
+        defaults={'code': code}
+    )
 
-def generate_otp(user):
-    """
-    Genera OTP de 6 dígitos y persiste su hash con TTL.
-    Devuelve (code_en_claro, instancia_otp) o (None, None) si throttling lo bloquea.
-    """
-    
+    # Prepara el contexto para las plantillas de correo
+    context = {
+        'user': user,
+        'code': code,
+    }
+
+    # Renderiza las plantillas de correo (HTML y texto plano)
+    email_html_message = render_to_string('mfa/email/2fa_code.html', context)
+    email_plaintext_message = render_to_string('mfa/email/2fa_code.txt', context)
+
+    # Envía el correo electrónico
+    send_mail(
+        # Asunto del correo
+        "Tu código de verificación para AuditaPro",
+        # Mensaje de texto plano (para clientes de correo que no soportan HTML)
+        email_plaintext_message,
+        # Correo remitente (tomado de settings.py)
+        settings.DEFAULT_FROM_EMAIL,
+        # Lista de destinatarios
+        [user.email],
+        # Mensaje en formato HTML
+        html_message=email_html_message,
+        fail_silently=False,
+    )
