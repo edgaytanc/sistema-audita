@@ -61,7 +61,7 @@ def login_user(req):
         if user.is_superuser:
             login_func(req, user)
             messages.success(req, f"Bienvenido de nuevo, {user.get_full_name() or user.username}.")
-            return redirect("dashboard")
+            return redirect("home")
         else:
             send_2fa_code(user)
             req.session['pre_2fa_user_id'] = user.id

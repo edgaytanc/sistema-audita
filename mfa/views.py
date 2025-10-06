@@ -56,7 +56,7 @@ def verify_2fa_view(request):
             del request.session['pre_2fa_user_id']
             
             messages.success(request, f"¡Bienvenido de nuevo, {user.get_full_name() or user.username}!")
-            return redirect('dashboard')
+            return redirect('home')
 
         except TwoFactorAuth.DoesNotExist:
             messages.error(request, "El código ingresado es incorrecto.")
